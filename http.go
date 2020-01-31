@@ -11,17 +11,7 @@ import (
 	"strings"
 )
 
-func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.Method == "CONNECT" {
-		// HTTPS
-		NewHTTPSRequest(w, r)
-	} else {
-		// HTTP
-		NewHTTPRequest(w, r)
-	}
-}
-
-func NewHTTPRequest(w http.ResponseWriter, r *http.Request) {
+func HandleRequest(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Host != "vpns.jlu.edu.cn" && strings.Contains(r.URL.Path, "wengine-vpn") {
 		// wdnmd
 		w.WriteHeader(200)
@@ -46,9 +36,16 @@ func NewHTTPRequest(w http.ResponseWriter, r *http.Request) {
 	} else if r.URL.Host == "vpns.jlu.edu.cn" {
 		url = "https://vpns.jlu.edu.cn" + r.URL.Path
 	} else {
+		protocol := r.URL.Scheme
+		host := r.URL.Hostname()
+		if r.URL.Scheme == "" {
+			// https
+			protocol = "https"
+			host = r.Host
+		}
 		// Without VPN
+		r.URL.Path = "/" + protocol + "-" + r.URL.Port() + "/" + Encrypt(host) + r.URL.Path
 		r.URL.Scheme = "https"
-		r.URL.Path = "/https-" + r.URL.Port() + "/" + Encrypt(r.URL.Hostname()) + r.URL.Path
 		r.URL.Host = "vpns.jlu.edu.cn"
 		url = r.URL.String()
 	}
@@ -73,7 +70,7 @@ func NewHTTPRequest(w http.ResponseWriter, r *http.Request) {
 		} else {
 			location = RedirectLink.ReplaceAllStringFunc(location, func(s string) string {
 				ret := RedirectLink.FindStringSubmatch(s)
-				return "http://" + Decrypt((ret[1])) + ret[2]
+				return ret[1] + "://" + Decrypt(ret[2]) + ret[3]
 			})
 			resp.Header.Set("Location", location)
 		}
@@ -123,12 +120,12 @@ func NewHTTPRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Replace https
-	result = HttpsToHttp.ReplaceAll(result, []byte("http://"))
+	//result = HttpsToHttp.ReplaceAll(result, []byte("http://"))
 
 	// Restore vpns url to original
 	result = VPNsLinkMatch.ReplaceAllFunc(result, func(bytes []byte) []byte {
 		ret := VPNsLinkMatch.FindSubmatch(bytes)
-		return []byte("\"http://" + Decrypt(string(ret[1])) + string(ret[2]))
+		return []byte(string(ret[1]) + "://" + Decrypt(string(ret[2])) + string(ret[3]))
 	})
 
 	// Fix URL Escape in links
@@ -164,8 +161,4 @@ func NewHTTPRequest(w http.ResponseWriter, r *http.Request) {
 	if _, err = w.Write(result); err != nil {
 		log.Println(err)
 	}
-}
-
-func NewHTTPSRequest(w http.ResponseWriter, r *http.Request) {
-	// TODO
 }

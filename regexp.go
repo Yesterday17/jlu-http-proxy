@@ -4,11 +4,9 @@ import "regexp"
 
 var PathMatchRegex = regexp.MustCompile("/(https?)(?:-\\d*)?/([0-9a-f]+)(.+)")
 
-var RedirectLink = regexp.MustCompile("https://vpns.jlu.edu.cn/https?(?:-[0-9]*)?/([0-9a-f]+)([^\")]+)")
+var RedirectLink = regexp.MustCompile("https://vpns.jlu.edu.cn/(https?)(?:-[0-9]*)?/([0-9a-f]+)(.*)")
 
-var HttpsToHttp = regexp.MustCompile("https://")
-
-var VPNsLinkMatch = regexp.MustCompile("\"(?:https?://)?(?:vpns.jlu.edu.cn)?/https?(?:-[0-9]*)?/([0-9a-f]+)([^\")]+)")
+var VPNsLinkMatch = regexp.MustCompile("(?:https:)?(?://)?(?:vpns.jlu.edu.cn)?/(https?)(?:-[0-9]*)?/([0-9a-f]+)([^\")]+)")
 
 var LinkUnescape = regexp.MustCompile("(href|link|src)=\"([^\"]+)\"")
 
