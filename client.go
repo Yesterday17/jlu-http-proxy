@@ -5,6 +5,7 @@ import (
 	"golang.org/x/net/http2"
 	"net/http"
 	"net/http/cookiejar"
+	"strings"
 	"time"
 )
 
@@ -24,6 +25,9 @@ func NewClient() *Client {
 		},
 		Jar:     jar,
 		Timeout: time.Second * 60,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
 	}
 	c.http2Client = &http.Client{
 		Transport: &http2.Transport{
@@ -32,6 +36,14 @@ func NewClient() *Client {
 		},
 		Jar:     jar,
 		Timeout: time.Second * 60,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if !strings.HasPrefix(req.URL.Path, "/login") &&
+				!strings.HasPrefix(req.URL.Path, "/do-login") &&
+				!strings.HasPrefix(req.URL.Path, "/do-confirm-login") {
+				return http.ErrUseLastResponse
+			}
+			return nil
+		},
 	}
 	return &c
 }

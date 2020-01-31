@@ -3,11 +3,11 @@ package main
 import (
 	"bytes"
 	"compress/gzip"
+	"html"
 	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
-	"regexp"
 	"strings"
 )
 
@@ -29,20 +29,28 @@ func NewHTTPRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var url string
-	reg := regexp.MustCompile("/(https?)(?:-\\d*)?/([0-9a-f]+)(.+)")
-	if reg.MatchString(r.URL.Path) {
+	if PathMatchRegex.MatchString(r.URL.Path) {
 		// Keep vpns
 		if r.URL.Host == "vpns.jlu.edu.cn" {
 			url = r.URL.String()
 		} else {
-			ret := reg.FindStringSubmatch(r.URL.Path)
-			url = ret[1] + "://" + Decrypt(ret[2]) + ret[3]
+			ret := PathMatchRegex.FindStringSubmatch(r.URL.Path)
+			protocol := ret[1]
+			host := ret[2]
+			path := ret[3]
+			r.URL.Scheme = "https"
+			r.URL.Host = "vpns.jlu.edu.cn"
+			r.URL.Path = "/" + protocol + "-" + r.URL.Port() + "/" + host + path
+			url = r.URL.String()
 		}
 	} else if r.URL.Host == "vpns.jlu.edu.cn" {
 		url = "https://vpns.jlu.edu.cn" + r.URL.Path
 	} else {
 		// Without VPN
-		url = "https://vpns.jlu.edu.cn/http-" + r.URL.Port() + "/" + Encrypt(r.URL.Hostname()) + r.URL.Path
+		r.URL.Scheme = "https"
+		r.URL.Path = "/https-" + r.URL.Port() + "/" + Encrypt(r.URL.Hostname()) + r.URL.Path
+		r.URL.Host = "vpns.jlu.edu.cn"
+		url = r.URL.String()
 	}
 
 	req, err := http.NewRequest(r.Method, url, r.Body)
@@ -54,6 +62,21 @@ func NewHTTPRequest(w http.ResponseWriter, r *http.Request) {
 	resp, err := DefaultClient.Do(req)
 	if err != nil {
 		panic(err)
+	}
+
+	// Redirect
+	if resp.StatusCode == 301 || resp.StatusCode == 302 {
+		location := resp.Header.Get("Location")
+		if location == "/login" {
+			// vpn relogin
+			w.WriteHeader(resp.StatusCode)
+		} else {
+			location = RedirectLink.ReplaceAllStringFunc(location, func(s string) string {
+				ret := RedirectLink.FindStringSubmatch(s)
+				return "http://" + Decrypt((ret[1])) + ret[2]
+			})
+			resp.Header.Set("Location", location)
+		}
 	}
 
 	for k, v := range resp.Header {
@@ -100,34 +123,31 @@ func NewHTTPRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Replace https
-	re := regexp.MustCompile("https://")
-	result = re.ReplaceAll(result, []byte("http://"))
+	result = HttpsToHttp.ReplaceAll(result, []byte("http://"))
 
 	// Restore vpns url to original
-	re = regexp.MustCompile("vpns.jlu.edu.cn/https?(?:-[0-9]+)?/([0-9a-f]+)([^\")]+)")
-	result = re.ReplaceAllFunc(result, func(bytes []byte) []byte {
-		ret := re.FindSubmatch(bytes)
-		return []byte(Decrypt(string(ret[1])) + string(ret[2]))
+	result = VPNsLinkMatch.ReplaceAllFunc(result, func(bytes []byte) []byte {
+		ret := VPNsLinkMatch.FindSubmatch(bytes)
+		return []byte("\"http://" + Decrypt(string(ret[1])) + string(ret[2]))
+	})
+
+	// Fix URL Escape in links
+	result = LinkUnescape.ReplaceAllFunc(result, func(bytes []byte) []byte {
+		ret := LinkUnescape.FindSubmatch(bytes)
+		return []byte(string(ret[1]) + "=\"" + html.UnescapeString(string(ret[2])) + "\"")
 	})
 
 	// Un VPN ify
-	re = regexp.MustCompile("vpn_eval\\(\\(function\\(\\){\r?\n")
-	result = re.ReplaceAll(result, []byte(""))
-
-	re = regexp.MustCompile("}\r?\n\\).toString\\(\\).slice\\(12, -2\\),\"\"\\);")
-	result = re.ReplaceAll(result, []byte(""))
-
-	re = regexp.MustCompile("vpn-\\d+&")
-	result = re.ReplaceAll(result, []byte(""))
-
-	re = regexp.MustCompile("\\?vpn-\\d+")
-	result = re.ReplaceAll(result, []byte(""))
+	result = VPNEvalPrefix.ReplaceAll(result, []byte{})
+	result = VPNEvalPostfix.ReplaceAll(result, []byte{})
+	result = VPNRewritePrefix.ReplaceAll(result, []byte{})
+	result = VPNRewritePostfix.ReplaceAll(result, []byte{})
+	result = VPNParamRemoveFirst.ReplaceAll(result, []byte{})
+	result = VPNParamRemoveOther.ReplaceAll(result, []byte{})
 
 	// Remove added tags
-	re = regexp.MustCompile("<script>(?:\r?\nvar __vpn_[^ ]+ = [^;]+;)+\r?\n</script>")
-	result = re.ReplaceAll(result, []byte(""))
-	re = regexp.MustCompile("<script src=\"/wengine-vpn/js/main.js[^>]+></script>")
-	result = re.ReplaceAll(result, []byte(""))
+	result = VPNScriptInfo.ReplaceAll(result, []byte{})
+	result = VPNScriptWEngine.ReplaceAll(result, []byte(""))
 
 	// Trim
 	result = bytes.Trim(result, "\r\n")
