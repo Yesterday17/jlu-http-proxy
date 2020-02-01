@@ -119,9 +119,6 @@ func HandleRequest(w http.ResponseWriter, r *http.Request) {
 		log.Println(err)
 	}
 
-	// Replace https
-	//result = HttpsToHttp.ReplaceAll(result, []byte("http://"))
-
 	// Restore vpns url to original
 	result = VPNsLinkMatch.ReplaceAllFunc(result, func(bytes []byte) []byte {
 		ret := VPNsLinkMatch.FindSubmatch(bytes)

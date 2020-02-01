@@ -30,10 +30,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"net/http/httputil"
-	"strings"
-	"sync"
-	"time"
 )
 
 // ServerParam struct
@@ -71,40 +67,12 @@ func Server(cn net.Conn, p ServerParam) *ServerConn {
 	return sc
 }
 
-type listener struct {
-	net.Listener
-	ca   *tls.Certificate
-	conf *tls.Config
-}
-
-// NewListener returns a net.Listener that generates a new cert from ca for
-// each new Accept. It uses SNI to generate the cert, and herefore only
-// works with clients that send SNI headers.
-//
-// This is useful for building transparent MITM proxies.
-func NewListener(inner net.Listener, ca *tls.Certificate, conf *tls.Config) net.Listener {
-	return &listener{inner, ca, conf}
-}
-
-func (l *listener) Accept() (net.Conn, error) {
-	cn, err := l.Listener.Accept()
-	if err != nil {
-		return nil, err
-	}
-	sc := Server(cn, ServerParam{
-		CA:        l.ca,
-		TLSConfig: l.conf,
-	})
-	return sc, nil
-}
-
 // Proxy is a forward proxy that substitutes its own certificate
 // for incoming TLS connections in place of the upstream server's
 // certificate.
 type Proxy struct {
-	// Wrap specifies a function for optionally wrapping upstream for
-	// inspecting the decrypted HTTP request and response.
-	Wrap func(upstream http.Handler) http.Handler
+	// Handle specifies a function for handling the decrypted HTTP request and response.
+	Handle func(w http.ResponseWriter, r *http.Request)
 
 	// CA specifies the root CA for generating leaf certs for each incoming
 	// TLS request.
@@ -118,12 +86,6 @@ type Proxy struct {
 	// an upstream connection for proxying.
 	TLSClientConfig *tls.Config
 
-	// FlushInterval specifies the flush interval
-	// to flush to the client while copying the
-	// response body.
-	// If zero, no periodic flushing is done.
-	FlushInterval time.Duration
-
 	// Director is function which modifies the request into a new
 	// request to be sent using Transport. See the documentation for
 	// httputil.ReverseProxy for more details. For mitm proxies, the
@@ -136,18 +98,9 @@ type Proxy struct {
 	// wrapped. If false, it's wrapped and proxied. By default we use
 	// SkipNone, which doesn't skip any request
 	SkipRequest func(*http.Request) bool
-
-	// Transport is the low-level transport to perform proxy requests.
-	// If nil, http.DefaultTransport is used.
-	Transport http.RoundTripper
 }
 
-var (
-	okHeader           = "HTTP/1.1 200 OK\r\n\r\n"
-	noUpstreamHeader   = "HTTP/1.1 503 No Upstream\r\n\r\n"
-	noDownstreamHeader = "HTTP/1.1 503 No Downstream\r\n\r\n"
-	errHeader          = "HTTP/1.1 500 Internal Server Error\r\n\r\n"
-)
+var okHeader = "HTTP/1.1 200 OK\r\n\r\n"
 
 func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if p.SkipRequest == nil {
@@ -156,20 +109,20 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if p.Director == nil {
 		p.Director = HTTPDirector
 	}
+
+	// Skip some requests
 	if p.SkipRequest(req) || isWebSocket(req) {
 		p.forwardRequest(w, req)
 		return
 	}
+
+	// http
 	if req.Method != "CONNECT" {
-		rp := &httputil.ReverseProxy{
-			Director:      p.Director,
-			FlushInterval: p.FlushInterval,
-			Transport:     p.Transport,
-		}
-		p.Wrap(rp).ServeHTTP(w, req)
+		p.Handle(w, req)
 		return
 	}
 
+	// https
 	cn, _, err := w.(http.Hijacker).Hijack()
 	if err != nil {
 		log.Println("Hijack:", err)
@@ -196,13 +149,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
-	cc, err := p.tlsDial("vpns.jlu.edu.cn:443", "vpns.jlu.edu.cn")
-	if err != nil {
-		log.Println("tlsDial:", err)
-		io.WriteString(cn, noUpstreamHeader)
-		return
-	}
-	p.proxyMITM(sc, cc)
+	p.proxyMITM(sc)
 }
 
 // SkipNone doesn't skip any request and proxy all of them.
@@ -210,110 +157,10 @@ func SkipNone(req *http.Request) bool {
 	return false
 }
 
-func isWebSocket(req *http.Request) bool {
-	return strings.Contains(strings.ToLower(req.Header.Get("Upgrade")), "websocket") &&
-		strings.Contains(strings.ToLower(req.Header.Get("Connection")), "upgrade")
-}
-
-// fixWebsocketHeaders "un-canonicalizes" websocket headers for a
-// request. According to https://tools.ietf.org/html/rfc6455 the correct form is
-// Sec-WebSocket-*, which header canonicalization breaks (some servers care).
-func fixWebsocketHeaders(req *http.Request) {
-	for header, _ := range req.Header {
-		if strings.Contains(header, "Sec-Websocket") {
-			val := req.Header.Get(header)
-			correctHeader := strings.Replace(header, "Sec-Websocket", "Sec-WebSocket", 1)
-			req.Header[correctHeader] = []string{val}
-			delete(req.Header, header)
-		}
-	}
-}
-
-// forwardRequest forwards a WebSocket connection directly to the
-// source, skipping the request wrapper. Code shamelessly stolen from
-// https://groups.google.com/forum/#!topic/golang-nuts/KBx9pDlvFOc
-func (p *Proxy) forwardRequest(w http.ResponseWriter, req *http.Request) {
-	p.Director(req)
-	if isWebSocket(req) {
-		fixWebsocketHeaders(req)
-	}
-	host, port, err := net.SplitHostPort(req.URL.Host)
-	if err != nil {
-		// Assume there is no port and use default
-		host = req.URL.Host
-		if req.URL.Scheme == "https" {
-			port = "443"
-		} else {
-			port = "80"
-		}
-	}
-	address := net.JoinHostPort(host, port)
-	var d io.ReadWriteCloser
-	if req.URL.Scheme == "https" {
-		d, err = tls.Dial("tcp", address, p.TLSClientConfig)
-	} else {
-		d, err = net.Dial("tcp", address)
-	}
-	if err != nil {
-		log.Printf("forwardRequest: error dialing websocket backend %s: %v", address, err)
-		http.Error(w, "No Upstream", 503)
-		return
-	}
-	defer d.Close()
-
-	nc, _, err := w.(http.Hijacker).Hijack()
-	if err != nil {
-		log.Printf("forwardRequest: hijack error: %v", err)
-		http.Error(w, "No Upstream", 503)
-		return
-	}
-	defer nc.Close()
-
-	err = req.Write(d)
-	if err != nil {
-		log.Printf("forwardRequest: error copying request to target: %v", err)
-		return
-	}
-
-	errc := make(chan error, 2)
-	cp := func(dst io.Writer, src io.Reader) {
-		_, err := io.Copy(dst, src)
-		errc <- err
-	}
-	go cp(d, nc)
-	go cp(nc, d)
-	<-errc
-}
-
-func (p *Proxy) tlsDial(addr, serverName string) (net.Conn, error) {
-	conf := new(tls.Config)
-	if p.TLSClientConfig != nil {
-		*conf = *p.TLSClientConfig
-	}
-	conf.ServerName = serverName
-	return tls.Dial("tcp", addr, conf)
-}
-
-func (p *Proxy) proxyMITM(upstream, downstream net.Conn) {
-	var mu sync.Mutex
-	dial := func(network, addr string) (net.Conn, error) {
-		mu.Lock()
-		defer mu.Unlock()
-		if downstream == nil {
-			return nil, io.EOF
-		}
-		cn := downstream
-		downstream = nil
-		return cn, nil
-	}
-	rp := &httputil.ReverseProxy{
-		Director:      HTTPSDirector,
-		Transport:     &http.Transport{DialTLS: dial},
-		FlushInterval: p.FlushInterval,
-	}
-	ch := make(chan struct{})
-	wc := &onCloseConn{upstream, func() { ch <- struct{}{} }}
-	http.Serve(&oneShotListener{wc}, p.Wrap(rp))
+func (p *Proxy) proxyMITM(upstream net.Conn) {
+	ch := make(chan int)
+	wc := &onCloseConn{upstream, func() { ch <- 1 }}
+	_ = http.Serve(&oneShotListener{wc}, http.HandlerFunc(p.Handle))
 	<-ch
 }
 
@@ -322,13 +169,6 @@ func (p *Proxy) proxyMITM(upstream, downstream net.Conn) {
 func HTTPDirector(r *http.Request) {
 	r.URL.Host = r.Host
 	r.URL.Scheme = "http"
-}
-
-// HTTPSDirector is a director designed for use in Proxy for
-// transparent TLS proxies.
-func HTTPSDirector(req *http.Request) {
-	req.URL.Host = req.Host
-	req.URL.Scheme = "https"
 }
 
 // A oneShotListener implements net.Listener whos Accept only returns a
@@ -366,48 +206,4 @@ func (c *onCloseConn) Close() error {
 		c.f = nil
 	}
 	return c.Conn.Close()
-}
-
-// Certificates are cached locally to avoid unnecessary regeneration
-const certCacheMaxSize = 1000
-
-var (
-	certCache      = make(map[*tls.Certificate]map[string]*tls.Certificate)
-	certCacheMutex sync.RWMutex
-)
-
-func getCert(ca *tls.Certificate, host string) (*tls.Certificate, error) {
-	if c := getCachedCert(ca, host); c != nil {
-		return c, nil
-	}
-	cert, err := GenerateCert(ca, host)
-	if err != nil {
-		return nil, err
-	}
-	cacheCert(ca, host, cert)
-	return cert, nil
-}
-
-func getCachedCert(ca *tls.Certificate, host string) *tls.Certificate {
-	certCacheMutex.RLock()
-	defer certCacheMutex.RUnlock()
-
-	if certCache[ca] == nil {
-		return nil
-	}
-	cert := certCache[ca][host]
-	if cert == nil || cert.Leaf.NotAfter.Before(time.Now()) {
-		return nil
-	}
-	return cert
-}
-
-func cacheCert(ca *tls.Certificate, host string, cert *tls.Certificate) {
-	certCacheMutex.Lock()
-	defer certCacheMutex.Unlock()
-
-	if certCache[ca] == nil || len(certCache[ca]) > certCacheMaxSize {
-		certCache[ca] = make(map[string]*tls.Certificate)
-	}
-	certCache[ca][host] = cert
 }

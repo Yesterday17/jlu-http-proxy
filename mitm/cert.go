@@ -24,9 +24,8 @@ SOFTWARE.
 package mitm
 
 import (
-	"crypto/ecdsa"
-	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -48,13 +47,13 @@ const (
 		x509.KeyUsageKeyAgreement |
 		x509.KeyUsageCertSign |
 		x509.KeyUsageCRLSign
-	leafUsage = caUsage
+	leafUsage = x509.KeyUsageDigitalSignature
 )
 
 // GenerateCA generates a CA cert and key pair.
 func GenerateCA(name string) (certPEM, keyPEM []byte, err error) {
 	now := time.Now().UTC()
-	tmpl := &x509.Certificate{
+	ca := &x509.Certificate{
 		SerialNumber:          big.NewInt(1),
 		Subject:               pkix.Name{CommonName: name},
 		NotBefore:             now,
@@ -63,28 +62,29 @@ func GenerateCA(name string) (certPEM, keyPEM []byte, err error) {
 		BasicConstraintsValid: true,
 		IsCA:                  true,
 		MaxPathLen:            2,
-		SignatureAlgorithm:    x509.ECDSAWithSHA512,
+		SignatureAlgorithm:    x509.SHA256WithRSA,
 	}
+
+	// Get KeyPair
 	key, err := genKeyPair()
 	if err != nil {
 		return
 	}
-	certDER, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, key.Public(), key)
+
+	certBytes, err := x509.CreateCertificate(rand.Reader, ca, ca, key.Public(), key)
 	if err != nil {
 		return
 	}
-	keyDER, err := x509.MarshalECPrivateKey(key)
-	if err != nil {
-		return
-	}
+
 	certPEM = pem.EncodeToMemory(&pem.Block{
 		Type:  "CERTIFICATE",
-		Bytes: certDER,
+		Bytes: certBytes,
 	})
 	keyPEM = pem.EncodeToMemory(&pem.Block{
-		Type:  "ECDSA PRIVATE KEY",
-		Bytes: keyDER,
+		Type:  "RSA PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(key),
 	})
+
 	return
 }
 
@@ -106,7 +106,6 @@ func GenerateCert(ca *tls.Certificate, hosts ...string) (*tls.Certificate, error
 		NotAfter:              now.Add(leafMaxAge),
 		KeyUsage:              leafUsage,
 		BasicConstraintsValid: true,
-		SignatureAlgorithm:    x509.ECDSAWithSHA256,
 	}
 
 	for _, h := range hosts {
@@ -125,6 +124,7 @@ func GenerateCert(ca *tls.Certificate, hosts ...string) (*tls.Certificate, error
 	if err != nil {
 		return nil, err
 	}
+
 	cert := new(tls.Certificate)
 	cert.Certificate = append(cert.Certificate, x)
 	cert.PrivateKey = key
@@ -132,6 +132,6 @@ func GenerateCert(ca *tls.Certificate, hosts ...string) (*tls.Certificate, error
 	return cert, nil
 }
 
-func genKeyPair() (*ecdsa.PrivateKey, error) {
-	return ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+func genKeyPair() (*rsa.PrivateKey, error) {
+	return rsa.GenerateKey(rand.Reader, 4096)
 }

@@ -35,17 +35,14 @@ func main() {
 	}
 
 	proxy := &mitm.Proxy{
-		Wrap: func(upstream http.Handler) http.Handler {
-			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				HandleRequest(w, r)
-			})
-		},
-		CA: &ca,
+		Handle: HandleRequest,
+		CA:     &ca,
 		TLSServerConfig: &tls.Config{
 			MinVersion:         tls.VersionTLS12,
 			InsecureSkipVerify: true,
 		},
 		TLSClientConfig: &tls.Config{
+			// VPNS is insecure
 			InsecureSkipVerify: true,
 		},
 		//SkipRequest: func(request *http.Request) bool {
