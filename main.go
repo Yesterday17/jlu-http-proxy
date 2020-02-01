@@ -35,7 +35,7 @@ func main() {
 	}
 
 	proxy := &mitm.Proxy{
-		Handle: HandleRequest,
+		Handle: p.HandleRequest,
 		CA:     &ca,
 		TLSServerConfig: &tls.Config{
 			MinVersion:         tls.VersionTLS12,
@@ -45,9 +45,6 @@ func main() {
 			// VPNS is insecure
 			InsecureSkipVerify: true,
 		},
-		//SkipRequest: func(request *http.Request) bool {
-		//	return request.URL.Host == "vpns.jlu.edu.cn"
-		//},
 	}
 
 	fmt.Println("Start server on port " + p.Port)

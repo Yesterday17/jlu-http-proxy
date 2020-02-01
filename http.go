@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-func HandleRequest(w http.ResponseWriter, r *http.Request) {
+func (p *Proxy) HandleRequest(w http.ResponseWriter, r *http.Request) {
 	r.URL.Host = r.Host
 
 	if r.URL.Host != "vpns.jlu.edu.cn" && strings.Contains(r.URL.Path, "wengine-vpn") {
@@ -60,6 +60,12 @@ func HandleRequest(w http.ResponseWriter, r *http.Request) {
 	req.Header = r.Header
 	req.Header.Del("Proxy-Connection")
 	req.Header.Set("Referer", url)
+
+	cookies := req.Header.Get("Cookie")
+	if cookies != "" {
+		// TODO: Set-Header
+	}
+	req.Header.Set("Cookie", p.Cookies)
 
 	req.Proto = "HTTP/2"
 	resp, err := DefaultClient.Do(req)
