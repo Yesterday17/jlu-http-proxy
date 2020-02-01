@@ -8,10 +8,15 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"regexp"
 	"strings"
 )
 
 func (p *Proxy) HandleRequest(w http.ResponseWriter, r *http.Request) {
+	var protocol = "https"
+	var host = "vpns.jlu.edu.cn"
+	var path = ""
+
 	r.URL.Host = r.Host
 
 	if r.URL.Host != "vpns.jlu.edu.cn" && strings.Contains(r.URL.Path, "wengine-vpn") {
@@ -20,64 +25,86 @@ func (p *Proxy) HandleRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var url string
+	var toRequest string
 	if PathMatchRegex.MatchString(r.URL.Path) {
 		// Keep vpns
 		if r.URL.Host == "vpns.jlu.edu.cn" {
-			r.URL.Scheme = "https"
-			url = r.URL.String()
+			// Save information before encode
+			protocol = "https"
+			path = r.URL.Path
 		} else {
 			ret := PathMatchRegex.FindStringSubmatch(r.URL.Path)
-			protocol := ret[1]
-			host := ret[2]
-			path := ret[3]
-			r.URL.Scheme = "https"
+			protocol = ret[1]
+			host = ret[2]
+			path = ret[3]
+
 			r.URL.Host = "vpns.jlu.edu.cn"
 			r.URL.Path = "/" + protocol + "-" + r.URL.Port() + "/" + host + path
-			url = r.URL.String()
 		}
-	} else if r.URL.Host == "vpns.jlu.edu.cn" {
-		url = "https://vpns.jlu.edu.cn" + r.URL.Path
-	} else {
-		protocol := r.URL.Scheme
-		host := r.URL.Hostname()
-		if r.URL.Scheme == "" {
+	} else if r.URL.Host != "vpns.jlu.edu.cn" {
+		protocol = r.URL.Scheme
+		if protocol == "" {
 			// https
 			protocol = "https"
-			host = r.URL.Host
 		}
+		host = r.URL.Hostname()
+
 		// Without VPN
 		r.URL.Path = "/" + protocol + "-" + r.URL.Port() + "/" + Encrypt(host) + r.URL.Path
-		r.URL.Scheme = "https"
+		r.URL.Scheme = protocol
 		r.URL.Host = "vpns.jlu.edu.cn"
-		url = r.URL.String()
+	}
+	r.URL.Scheme = "https"
+
+	// Construct new request
+	toRequest = r.URL.String()
+	req, err := http.NewRequest(r.Method, toRequest, r.Body)
+	if err != nil {
+		log.Println(err)
+		return
 	}
 
-	req, err := http.NewRequest(r.Method, url, r.Body)
-	if err != nil {
-		panic(err)
-	}
+	// Headers
 	req.Header = r.Header
 	req.Header.Del("Proxy-Connection")
-	req.Header.Set("Referer", url)
+	req.Header.Set("Referer", toRequest)
 
+	// Set headers
 	cookies := req.Header.Get("Cookie")
-	if cookies != "" {
-		// TODO: Set-Header
+	//if cookies != "" {
+	//	_, err = p.SimpleFetch("POST", "/wengine-vpn/cookie?method=set&host="+host+"&scheme="+protocol+"&path="+path+"&ck_data="+url.QueryEscape(cookies), nil)
+	//	if err != nil {
+	//		log.Println(err)
+	//	}
+	//}
+	if cookies == "" {
+		cookies = p.Cookies
+	} else {
+		reg := regexp.MustCompile("wengine_vpn_ticket_ecit=[0-9a-f]+")
+		if reg.MatchString(cookies) {
+			cookies = reg.ReplaceAllString(cookies, p.Cookies)
+		} else {
+			cookies += "; " + p.Cookies
+		}
 	}
-	req.Header.Set("Cookie", p.Cookies)
+	req.Header.Set("Cookie", cookies)
 
+	// Send request
 	req.Proto = "HTTP/2"
 	resp, err := DefaultClient.Do(req)
 	if err != nil {
-		panic(err)
+		log.Println(err)
 	}
 
-	// Redirect
+	if resp == nil {
+		return
+	}
+
+	// Handle Redirect
 	if resp.StatusCode == 301 || resp.StatusCode == 302 {
 		location := resp.Header.Get("Location")
 		if location == "/login" {
-			// vpn relogin
+			// disable vpn login redirect
 			w.WriteHeader(resp.StatusCode)
 		} else {
 			location = RedirectLink.ReplaceAllStringFunc(location, func(s string) string {
@@ -131,7 +158,7 @@ func (p *Proxy) HandleRequest(w http.ResponseWriter, r *http.Request) {
 		log.Println(err)
 	}
 
-	// Restore vpns url to original
+	// Restore vpns toRequest to original
 	result = VPNsLinkMatch.ReplaceAllFunc(result, func(bytes []byte) []byte {
 		ret := VPNsLinkMatch.FindSubmatch(bytes)
 		return []byte(string(ret[1]) + "://" + Decrypt(string(ret[2])) + string(ret[3]))
