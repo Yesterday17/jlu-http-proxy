@@ -101,6 +101,7 @@ type Proxy struct {
 }
 
 var okHeader = "HTTP/1.1 200 OK\r\n\r\n"
+var establishedHeader = "HTTP/1.1 200 Connection Established\r\n\r\n"
 
 func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if p.SkipRequest == nil {
@@ -145,6 +146,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		})
 		if err := sc.Handshake(); err != nil {
 			log.Println("Server Handshake:", err)
+			p.proxyMITM(cn)
 			return
 		}
 	}

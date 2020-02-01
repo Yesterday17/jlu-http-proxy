@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"github.com/Yesterday17/jlu-http-proxy/mitm"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"os"
 	"path"
@@ -14,26 +13,28 @@ import (
 
 var (
 	hostname, _ = os.Hostname()
-
-	dir      = path.Join(os.Getenv("HOME"), ".jlu-http-proxy")
-	keyFile  = path.Join(dir, "ca-key.pem")
-	certFile = path.Join(dir, "ca-cert.pem")
+	dir, _      = os.Getwd()
 )
 
 func main() {
-	DefaultClient = NewClient()
-	p := LoadConfig("config.json")
-
-	ca, err := loadCA()
-	if err != nil {
-		log.Fatal(err)
+	config := "config.json"
+	if len(os.Args) > 1 {
+		config = os.Args[1]
 	}
+	p := LoadConfig(config)
 
-	err = p.Login()
-	if err != nil {
+	// Directory
+	if p.Directory != "" {
+		dir = p.Directory
+	}
+	ca := loadCA(dir)
+
+	// Login
+	if err := p.Login(); err != nil {
 		panic(err)
 	}
 
+	// Proxy
 	proxy := &mitm.Proxy{
 		Handle: p.HandleRequest,
 		CA:     &ca,
@@ -48,24 +49,33 @@ func main() {
 	}
 
 	fmt.Println("Start server on port " + p.Port)
-	err = http.ListenAndServe(":"+p.Port, proxy)
-	if err != nil {
+
+	// Listen
+	if err := http.ListenAndServe(":"+p.Port, proxy); err != nil {
 		panic(err)
 	}
 }
 
-func loadCA() (cert tls.Certificate, err error) {
-	cert, err = tls.LoadX509KeyPair(certFile, keyFile)
-	if os.IsNotExist(err) {
-		cert, err = genCA()
+func loadCA(dir string) tls.Certificate {
+	cert, err := tls.LoadX509KeyPair(path.Join(dir, "ca-cert.pem"), path.Join(dir, "ca-key.pem"))
+	if err != nil {
+		if os.IsNotExist(err) {
+			cert, err = genCA(dir)
+			if err != nil {
+				panic(err)
+			}
+		} else {
+			panic(err)
+		}
 	}
-	if err == nil {
-		cert.Leaf, err = x509.ParseCertificate(cert.Certificate[0])
+	cert.Leaf, err = x509.ParseCertificate(cert.Certificate[0])
+	if err != nil {
+		panic(err)
 	}
-	return
+	return cert
 }
 
-func genCA() (cert tls.Certificate, err error) {
+func genCA(dir string) (cert tls.Certificate, err error) {
 	err = os.MkdirAll(dir, 0700)
 	if err != nil {
 		return
@@ -75,9 +85,9 @@ func genCA() (cert tls.Certificate, err error) {
 		return
 	}
 	cert, _ = tls.X509KeyPair(certPEM, keyPEM)
-	err = ioutil.WriteFile(certFile, certPEM, 0400)
+	err = ioutil.WriteFile(path.Join(dir, "ca-cert.pem"), certPEM, 0400)
 	if err == nil {
-		err = ioutil.WriteFile(keyFile, keyPEM, 0400)
+		err = ioutil.WriteFile(path.Join(dir, "ca-key.pem"), keyPEM, 0400)
 	}
 	return cert, err
 }

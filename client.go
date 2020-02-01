@@ -9,10 +9,10 @@ import (
 	"time"
 )
 
-var DefaultClient *http.Client
+var DefaultClient = NewClient()
 
 func NewClient() *http.Client {
-	DefaultClient = &http.Client{
+	return &http.Client{
 		Transport: &http2.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 		},
@@ -26,7 +26,6 @@ func NewClient() *http.Client {
 			return nil
 		},
 	}
-	return DefaultClient
 }
 
 func (p *Proxy) SimpleFetch(method, path string, header url.Values) (*http.Response, error) {

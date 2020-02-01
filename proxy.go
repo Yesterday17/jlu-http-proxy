@@ -9,7 +9,10 @@ type Proxy struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 	Port     string `json:"port"`
-	Cookies  string
+
+	Directory string `json:"directory"`
+
+	Cookies string
 }
 
 func LoadConfig(file string) *Proxy {
