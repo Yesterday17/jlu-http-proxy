@@ -12,6 +12,8 @@ import (
 )
 
 func HandleRequest(w http.ResponseWriter, r *http.Request) {
+	r.URL.Host = r.Host
+
 	if r.URL.Host != "vpns.jlu.edu.cn" && strings.Contains(r.URL.Path, "wengine-vpn") {
 		// wdnmd
 		w.WriteHeader(200)
@@ -22,6 +24,7 @@ func HandleRequest(w http.ResponseWriter, r *http.Request) {
 	if PathMatchRegex.MatchString(r.URL.Path) {
 		// Keep vpns
 		if r.URL.Host == "vpns.jlu.edu.cn" {
+			r.URL.Scheme = "https"
 			url = r.URL.String()
 		} else {
 			ret := PathMatchRegex.FindStringSubmatch(r.URL.Path)
@@ -41,7 +44,7 @@ func HandleRequest(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Scheme == "" {
 			// https
 			protocol = "https"
-			host = r.Host
+			host = r.URL.Host
 		}
 		// Without VPN
 		r.URL.Path = "/" + protocol + "-" + r.URL.Port() + "/" + Encrypt(host) + r.URL.Path
@@ -55,7 +58,10 @@ func HandleRequest(w http.ResponseWriter, r *http.Request) {
 		panic(err)
 	}
 	req.Header = r.Header
+	req.Header.Del("Proxy-Connection")
+	req.Header.Set("Referer", url)
 
+	req.Proto = "HTTP/2"
 	resp, err := DefaultClient.Do(req)
 	if err != nil {
 		panic(err)
