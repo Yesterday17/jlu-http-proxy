@@ -30,6 +30,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"time"
 )
 
 // ServerParam struct
@@ -132,26 +133,39 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 	defer cn.Close()
 
-	_, err = io.WriteString(cn, okHeader)
+	_, err = io.WriteString(cn, establishedHeader)
 	if err != nil {
 		log.Println("Write:", err)
 		return
 	}
 
-	sc, ok := cn.(*ServerConn)
-	if !ok {
-		sc = Server(cn, ServerParam{
-			CA:        p.CA,
-			TLSConfig: p.TLSServerConfig,
-		})
-		if err := sc.Handshake(); err != nil {
-			log.Println("Server Handshake:", err)
-			p.proxyMITM(cn)
-			return
+	var conn = cn
+	var https = false
+	if req.URL.Port() == "443" {
+		https = true
+	} else if req.URL.Port() != "80" {
+		if c, err := tls.DialWithDialer(&net.Dialer{Timeout: time.Second * 5}, "tcp", req.URL.Host, nil); err == nil {
+			_ = c.Close()
+			https = true
 		}
 	}
 
-	p.proxyMITM(sc)
+	if https {
+		serverConn, ok := cn.(*ServerConn)
+		if !ok {
+			serverConn = Server(cn, ServerParam{
+				CA:        p.CA,
+				TLSConfig: p.TLSServerConfig,
+			})
+			if err := serverConn.Handshake(); err != nil {
+				log.Println("Server Handshake:", err)
+				return
+			}
+		}
+		conn = serverConn
+	}
+
+	p.proxyMITM(conn)
 }
 
 // SkipNone doesn't skip any request and proxy all of them.
