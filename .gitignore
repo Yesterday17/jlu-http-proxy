@@ -1,3 +1,9 @@
-*.json
+# idea
 .idea
+
+# Personal config
+config.json
+!release/config.json
+
+# release file
 jlu-http-proxy
