@@ -37,8 +37,16 @@ func main() {
 
 	// Proxy
 	proxy := &mitm.Proxy{
-		Handle: p.HandleRequest,
-		CA:     &ca,
+		Handle: func(https bool) func(w http.ResponseWriter, r *http.Request) {
+			return func(w http.ResponseWriter, r *http.Request) {
+				r.URL.Scheme = "http"
+				if https {
+					r.URL.Scheme += "s"
+				}
+				p.HandleRequest(w, r)
+			}
+		},
+		CA: &ca,
 		TLSServerConfig: &tls.Config{
 			MinVersion:         tls.VersionTLS12,
 			InsecureSkipVerify: true,

@@ -30,7 +30,6 @@ func (p *Proxy) HandleRequest(w http.ResponseWriter, r *http.Request) {
 		// Keep vpns
 		if r.URL.Host == "vpns.jlu.edu.cn" {
 			// Save information before encode
-			protocol = "https"
 			path = r.URL.Path
 		} else {
 			ret := PathMatchRegex.FindStringSubmatch(r.URL.Path)
@@ -43,10 +42,6 @@ func (p *Proxy) HandleRequest(w http.ResponseWriter, r *http.Request) {
 		}
 	} else if r.URL.Host != "vpns.jlu.edu.cn" {
 		protocol = r.URL.Scheme
-		if protocol == "" {
-			// https
-			protocol = "https"
-		}
 		host = r.URL.Hostname()
 
 		// Without VPN

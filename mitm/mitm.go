@@ -73,7 +73,7 @@ func Server(cn net.Conn, p ServerParam) *ServerConn {
 // certificate.
 type Proxy struct {
 	// Handle specifies a function for handling the decrypted HTTP request and response.
-	Handle func(w http.ResponseWriter, r *http.Request)
+	Handle func(https bool) func(w http.ResponseWriter, r *http.Request)
 
 	// CA specifies the root CA for generating leaf certs for each incoming
 	// TLS request.
@@ -120,7 +120,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	// http
 	if req.Method != "CONNECT" {
-		p.Handle(w, req)
+		p.Handle(false)(w, req)
 		return
 	}
 
@@ -165,7 +165,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		conn = serverConn
 	}
 
-	p.proxyMITM(conn)
+	p.proxyMITM(conn, https)
 }
 
 // SkipNone doesn't skip any request and proxy all of them.
@@ -173,10 +173,10 @@ func SkipNone(req *http.Request) bool {
 	return false
 }
 
-func (p *Proxy) proxyMITM(upstream net.Conn) {
+func (p *Proxy) proxyMITM(upstream net.Conn, https bool) {
 	ch := make(chan int)
 	wc := &onCloseConn{upstream, func() { ch <- 1 }}
-	_ = http.Serve(&oneShotListener{wc}, http.HandlerFunc(p.Handle))
+	_ = http.Serve(&oneShotListener{wc}, http.HandlerFunc(p.Handle(https)))
 	<-ch
 }
 
