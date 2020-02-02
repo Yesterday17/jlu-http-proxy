@@ -28,6 +28,11 @@ func LoadConfig(file string) *Proxy {
 	if err != nil {
 		Panic(err)
 	}
+
+	if p.Username == "" || p.Password == "" || p.Directory == "" || p.Port == "" {
+		Panic("Empty entries found in config file!")
+	}
+
 	DefaultProxy = &p
 	return DefaultProxy
 }
