@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/Yesterday17/jlu-http-proxy/mitm"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"os"
 	"path"
@@ -62,15 +63,15 @@ func loadCA(dir string) tls.Certificate {
 		if os.IsNotExist(err) {
 			cert, err = genCA(dir)
 			if err != nil {
-				panic(err)
+				Panic(err)
 			}
 		} else {
-			panic(err)
+			Panic(err)
 		}
 	}
 	cert.Leaf, err = x509.ParseCertificate(cert.Certificate[0])
 	if err != nil {
-		panic(err)
+		Panic(err)
 	}
 	return cert
 }
@@ -90,4 +91,9 @@ func genCA(dir string) (cert tls.Certificate, err error) {
 		err = ioutil.WriteFile(path.Join(dir, "ca-key.pem"), keyPEM, 0400)
 	}
 	return cert, err
+}
+
+func Panic(v ...interface{}) {
+	log.Print(v...)
+	os.Exit(23)
 }

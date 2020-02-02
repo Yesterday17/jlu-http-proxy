@@ -8,7 +8,7 @@ import (
 
 func (p *Proxy) Login() error {
 	// Get Cookies first
-	resp, err := DefaultClient.Get("https://vpns.jlu.edu.cn/login")
+	resp, err := LoginClient.Get("https://vpns.jlu.edu.cn/login")
 	if err != nil {
 		return err
 	}
@@ -16,7 +16,7 @@ func (p *Proxy) Login() error {
 	p.Cookies = strings.Split(p.Cookies, ";")[0]
 
 	// Auth
-	resp, err = p.SimpleFetch("POST", "/do-login?fromUrl=", map[string][]string{
+	resp, err = p.SimpleFetchLogin("POST", "/do-login?fromUrl=", map[string][]string{
 		"auth_type":       {"local"},
 		"username":        {p.Username},
 		"password":        {p.Password},
