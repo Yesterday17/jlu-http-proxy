@@ -18,6 +18,10 @@ var VPNRewritePrefix = regexp.MustCompile("var vpn_return;eval\\(vpn_rewrite_js\
 
 var VPNRewritePostfix = regexp.MustCompile(" }\\).toString\\(\\)\\.slice\\(14, -2\\), 2\\)\\);return vpn_return;")
 
+var VPNInjectPrefix = regexp.MustCompile("javascript:this.top.vpn_inject_scripts_window\\(this\\);vpn_eval\\(\\(function \\(\\) { ")
+
+var VPNInjectPostfix = regexp.MustCompile(" }\\)\\.toString\\(\\).slice\\(14, -2\\)\\)")
+
 var VPNParamRemoveFirst = regexp.MustCompile("vpn-\\d+&")
 
 var VPNParamRemoveOther = regexp.MustCompile("\\?vpn-\\d+")

@@ -170,6 +170,8 @@ func (p *Proxy) HandleRequest(w http.ResponseWriter, r *http.Request) {
 	result = VPNEvalPostfix.ReplaceAll(result, []byte{})
 	result = VPNRewritePrefix.ReplaceAll(result, []byte{})
 	result = VPNRewritePostfix.ReplaceAll(result, []byte{})
+	result = VPNInjectPrefix.ReplaceAll(result, []byte{})
+	result = VPNInjectPostfix.ReplaceAll(result, []byte{})
 	result = VPNParamRemoveFirst.ReplaceAll(result, []byte{})
 	result = VPNParamRemoveOther.ReplaceAll(result, []byte{})
 
