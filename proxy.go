@@ -12,9 +12,10 @@ type Proxy struct {
 	Password string `json:"password"`
 	Port     string `json:"port"`
 
-	Directory string `json:"directory"`
-	Mark      int    `json:"mark"`
-	Http2     bool   `json:"http2"`
+	Directory  string `json:"directory"`
+	Mark       int    `json:"mark"`
+	Http2      bool   `json:"http2"`
+	AutoReauth bool   `json:"auto_reauth"`
 
 	Cookies string
 }

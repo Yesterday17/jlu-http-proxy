@@ -124,9 +124,15 @@ func (p *Proxy) HandleRequest(w http.ResponseWriter, r *http.Request) {
 		location := resp.Header.Get("Location")
 		if location == "/login" {
 			// disable and replace vpn login redirect
-			w.WriteHeader(200)
-			_, _ = w.Write([]byte(ReauthHTML))
-			return
+			if proxy.AutoReauth {
+				// reauth and 301 to self
+				w.WriteHeader(301)
+				w.Header().Set("Location", toRequest)
+			} else {
+				// Manual reauth frontend
+				w.WriteHeader(200)
+				_, _ = w.Write([]byte(ReauthHTML))
+			}
 		} else {
 			location = RedirectLink.ReplaceAllStringFunc(location, func(s string) string {
 				ret := RedirectLink.FindStringSubmatch(s)
@@ -134,6 +140,7 @@ func (p *Proxy) HandleRequest(w http.ResponseWriter, r *http.Request) {
 			})
 			resp.Header.Set("Location", location)
 		}
+		return
 	}
 
 	for k, v := range resp.Header {
