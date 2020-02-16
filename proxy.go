@@ -14,6 +14,7 @@ type Proxy struct {
 
 	Directory string `json:"directory"`
 	Mark      int    `json:"mark"`
+	Http2     bool   `json:"http2"`
 
 	Cookies string
 }

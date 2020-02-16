@@ -15,35 +15,37 @@ import (
 var (
 	hostname, _ = os.Hostname()
 	dir, _      = os.Getwd()
+	proxy       *Proxy
 )
 
 func main() {
-	config := "config.json"
+	cfgPath := "config.json"
 	if len(os.Args) > 1 {
-		config = os.Args[1]
+		cfgPath = os.Args[1]
 	}
-	p := LoadConfig(config)
+	proxy = LoadConfig(cfgPath)
+	InitClient()
 
 	// Directory
-	if p.Directory != "" {
-		dir = p.Directory
+	if proxy.Directory != "" {
+		dir = proxy.Directory
 	}
 	ca := loadCA(dir)
 
 	// Login
-	if err := p.Login(); err != nil {
+	if err := proxy.Login(); err != nil {
 		panic(err)
 	}
 
 	// Proxy
-	proxy := &mitm.Proxy{
+	p := &mitm.Proxy{
 		Handle: func(https bool) func(w http.ResponseWriter, r *http.Request) {
 			return func(w http.ResponseWriter, r *http.Request) {
 				r.URL.Scheme = "http"
 				if https {
 					r.URL.Scheme += "s"
 				}
-				p.HandleRequest(w, r)
+				proxy.HandleRequest(w, r)
 			}
 		},
 		CA: &ca,
@@ -57,10 +59,10 @@ func main() {
 		},
 	}
 
-	fmt.Println("Start server on port " + p.Port)
+	fmt.Println("Start server on port " + proxy.Port)
 
 	// Listen
-	if err := http.ListenAndServe(":"+p.Port, proxy); err != nil {
+	if err := http.ListenAndServe(":"+proxy.Port, p); err != nil {
 		panic(err)
 	}
 }

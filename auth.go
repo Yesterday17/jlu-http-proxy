@@ -16,7 +16,7 @@ func (p *Proxy) Login() error {
 	p.Cookies = strings.Split(p.Cookies, ";")[0]
 
 	// Auth
-	resp, err = p.SimpleFetchLogin("POST", "/do-login?fromUrl=", map[string][]string{
+	resp, err = p.SimpleFetchLogin("POST", "/do-login?local_login=true", map[string][]string{
 		"auth_type":       {"local"},
 		"username":        {p.Username},
 		"password":        {p.Password},
@@ -31,7 +31,7 @@ func (p *Proxy) Login() error {
 	r := regexp.MustCompile("logoutOtherToken = '([0-9a-f]+)'")
 	if r.Match(body) {
 		// Split current active token from html
-		p.Cookies = "wengine_vpn_ticket_ecit=" + string(r.FindSubmatch(body)[1])
+		p.Cookies = "wengine_vpn_ticket=" + string(r.FindSubmatch(body)[1])
 	}
 
 	// TODO: Check whether logon successfully

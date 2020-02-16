@@ -9,7 +9,11 @@ import (
 	"syscall"
 )
 
-func dialOpt(network, addr string, cfg *tls.Config) (net.Conn, error) {
+func tlsDialOptWithoutCfg(network, addr string) (net.Conn, error) {
+	return tlsDialOptWithCfg(network, addr, tlsConfig)
+}
+
+func tlsDialOptWithCfg(network, addr string, cfg *tls.Config) (net.Conn, error) {
 	if DefaultProxy.Mark == 0 {
 		return tls.Dial(network, addr, cfg)
 	}
