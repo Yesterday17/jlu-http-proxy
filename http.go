@@ -75,7 +75,7 @@ func (p *Proxy) HandleRequest(w http.ResponseWriter, r *http.Request) {
 	if cookies == "" {
 		cookies = p.Cookies
 	} else {
-		reg := regexp.MustCompile("wengine_vpn_ticket_ecit=[0-9a-f]+")
+		reg := regexp.MustCompile("wengine_vpn_ticket=[0-9a-f]+")
 		if reg.MatchString(cookies) {
 			cookies = reg.ReplaceAllString(cookies, p.Cookies)
 		} else {
