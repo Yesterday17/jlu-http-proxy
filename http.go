@@ -133,6 +133,7 @@ func (p *Proxy) HandleRequest(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(200)
 				_, _ = w.Write([]byte(ReauthHTML))
 			}
+			return
 		} else {
 			location = RedirectLink.ReplaceAllStringFunc(location, func(s string) string {
 				ret := RedirectLink.FindStringSubmatch(s)
@@ -140,7 +141,6 @@ func (p *Proxy) HandleRequest(w http.ResponseWriter, r *http.Request) {
 			})
 			resp.Header.Set("Location", location)
 		}
-		return
 	}
 
 	for k, v := range resp.Header {
