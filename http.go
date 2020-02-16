@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"compress/gzip"
+	"fmt"
 	"html"
 	"io"
 	"io/ioutil"
@@ -19,9 +20,28 @@ func (p *Proxy) HandleRequest(w http.ResponseWriter, r *http.Request) {
 
 	r.URL.Host = r.Host
 
-	if r.URL.Host != "vpns.jlu.edu.cn" && strings.Contains(r.URL.Path, "wengine-vpn") {
-		// wdnmd
+	if r.URL.Host != "vpns.jlu.edu.cn" {
+		if strings.Contains(r.URL.Path, "wengine-vpn") {
+			// wdnmd
+			w.WriteHeader(200)
+			return
+		}
+	} else if strings.HasPrefix(r.URL.Path, "/jlu-http-proxy") {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.WriteHeader(200)
+		path = r.URL.Path[15:]
+		if strings.HasPrefix(path, "/api") {
+			action := path[4:]
+			switch action {
+			case "/reauth":
+				err := p.Login()
+				if err != nil {
+					_, _ = w.Write([]byte(fmt.Sprintf(`{"success":0,message:"%s$"}`, err.Error())))
+				} else {
+					_, _ = w.Write([]byte(`{"success":1}`))
+				}
+			}
+		}
 		return
 	}
 
@@ -85,7 +105,11 @@ func (p *Proxy) HandleRequest(w http.ResponseWriter, r *http.Request) {
 	req.Header.Set("Cookie", cookies)
 
 	// Send request
-	req.Proto = "HTTP/2"
+	if proxy.Http2 {
+		req.Proto = "HTTP/2"
+	} else {
+		req.Proto = "HTTP/1.1"
+	}
 	resp, err := DefaultClient.Do(req)
 	if err != nil {
 		log.Println(err)
@@ -99,8 +123,10 @@ func (p *Proxy) HandleRequest(w http.ResponseWriter, r *http.Request) {
 	if resp.StatusCode == 301 || resp.StatusCode == 302 {
 		location := resp.Header.Get("Location")
 		if location == "/login" {
-			// disable vpn login redirect
-			w.WriteHeader(resp.StatusCode)
+			// disable and replace vpn login redirect
+			w.WriteHeader(200)
+			_, _ = w.Write([]byte(ReauthHTML))
+			return
 		} else {
 			location = RedirectLink.ReplaceAllStringFunc(location, func(s string) string {
 				ret := RedirectLink.FindStringSubmatch(s)
