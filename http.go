@@ -126,6 +126,7 @@ func (p *Proxy) HandleRequest(w http.ResponseWriter, r *http.Request) {
 			// disable and replace vpn login redirect
 			if proxy.AutoReauth {
 				// reauth and 301 to self
+				_ = p.Login()
 				w.WriteHeader(301)
 				w.Header().Set("Location", toRequest)
 			} else {
