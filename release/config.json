@@ -3,5 +3,7 @@
   "password": "",
   "port": "8848",
   "directory": "",
-  "mark": 0
+  "mark": 0,
+  "http2": false,
+  "auto_reauth": false
 }
