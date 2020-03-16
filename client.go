@@ -30,6 +30,15 @@ func InitClient() {
 }
 
 func Transport() http.RoundTripper {
+	var proxyUrl *url.URL
+	var err error
+	if proxy.Proxy != "" {
+		proxyUrl, err = url.Parse(DefaultProxy.Proxy)
+		if err != nil {
+			panic(err)
+		}
+	}
+
 	if proxy.Http2 {
 		return &http2.Transport{
 			TLSClientConfig: tlsConfig,
@@ -39,6 +48,7 @@ func Transport() http.RoundTripper {
 		return &http.Transport{
 			TLSClientConfig: tlsConfig,
 			DialTLS:         tlsDialOptWithoutCfg,
+			Proxy:           http.ProxyURL(proxyUrl),
 		}
 	}
 }

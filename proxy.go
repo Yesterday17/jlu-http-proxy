@@ -17,6 +17,8 @@ type Proxy struct {
 	Http2      bool   `json:"http2"`
 	AutoReauth bool   `json:"auto_reauth"`
 
+	Proxy string `json:"proxy"`
+
 	Cookies string
 }
 
