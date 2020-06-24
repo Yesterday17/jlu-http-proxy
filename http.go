@@ -3,7 +3,7 @@ package main
 import (
 	"bytes"
 	"compress/gzip"
-	"fmt"
+	"encoding/base64"
 	"html"
 	"io"
 	"io/ioutil"
@@ -28,19 +28,17 @@ func (p *Proxy) HandleRequest(w http.ResponseWriter, r *http.Request) {
 		}
 	} else if strings.HasPrefix(r.URL.Path, "/jlu-http-proxy") {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.WriteHeader(200)
 		path = r.URL.Path[15:]
-		if strings.HasPrefix(path, "/api") {
-			action := path[4:]
-			switch action {
-			case "/reauth":
-				err := p.Login()
-				if err != nil {
-					_, _ = w.Write([]byte(fmt.Sprintf(`{"success":0,message:"%s$"}`, err.Error())))
-				} else {
-					_, _ = w.Write([]byte(`{"success":1}`))
-				}
+		switch path {
+		case "/redirect?url=":
+			link, err := base64.StdEncoding.DecodeString(path[14:])
+			if err != nil {
+				w.WriteHeader(403)
+				return
 			}
+
+			w.Header().Set("Location", string(link))
+			w.WriteHeader(302)
 		}
 		return
 	}
@@ -57,8 +55,11 @@ func (p *Proxy) HandleRequest(w http.ResponseWriter, r *http.Request) {
 			host = ret[2]
 			path = ret[3]
 
-			r.URL.Host = "vpns.jlu.edu.cn"
-			r.URL.Path = "/" + protocol + "-" + r.URL.Port() + "/" + host + path
+			w.Header().Set("Location", protocol+"://"+Decrypt(host)+path)
+			w.WriteHeader(302)
+			return
+			// r.URL.Host = "vpns.jlu.edu.cn"
+			// r.URL.Path = "/" + protocol + "-" + r.URL.Port() + "/" + host + path
 		}
 	} else if r.URL.Host != "vpns.jlu.edu.cn" {
 		protocol = r.URL.Scheme
@@ -86,12 +87,12 @@ func (p *Proxy) HandleRequest(w http.ResponseWriter, r *http.Request) {
 
 	// Set headers
 	cookies := req.Header.Get("Cookie")
-	//if cookies != "" {
+	// if cookies != "" {
 	//	_, err = p.SimpleFetch("POST", "/wengine-vpn/cookie?method=set&host="+host+"&scheme="+protocol+"&path="+path+"&ck_data="+url.QueryEscape(cookies), nil)
 	//	if err != nil {
 	//		log.Println(err)
 	//	}
-	//}
+	// }
 	if cookies == "" {
 		cookies = p.Cookies
 	} else {
@@ -104,7 +105,7 @@ func (p *Proxy) HandleRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	req.Header.Set("Cookie", cookies)
 
-	// Send request
+	// Do request
 	if proxy.Http2 {
 		req.Proto = "HTTP/2"
 	} else {
@@ -113,36 +114,29 @@ func (p *Proxy) HandleRequest(w http.ResponseWriter, r *http.Request) {
 	resp, err := DefaultClient.Do(req)
 	if err != nil {
 		log.Println(err)
-	}
-
-	if resp == nil {
+		w.WriteHeader(403)
+		_, _ = w.Write([]byte(err.Error()))
 		return
 	}
 
-	// Handle Redirect
+	// Handle redirect
 	if resp.StatusCode == 301 || resp.StatusCode == 302 {
 		location := resp.Header.Get("Location")
 		if location == "/login" {
 			// disable and replace vpn login redirect
-			if proxy.AutoReauth {
-				// reauth and 301 to self
-				// TODO: avoid repeated login
-				_ = p.Login()
-				w.WriteHeader(301)
-				w.Header().Set("Location", toRequest)
-			} else {
-				// Manual reauth frontend
-				w.WriteHeader(200)
-				_, _ = w.Write([]byte(ReauthHTML))
-			}
-			return
+			// reauth and 302 to self
+			_ = p.Login()
+			w.Header().Set("Location", "http://vpns.jlu.edu.cn/jlu-http-proxy/redirect?url="+base64.StdEncoding.EncodeToString([]byte(toRequest)))
+			w.WriteHeader(302)
 		} else {
 			location = RedirectLink.ReplaceAllStringFunc(location, func(s string) string {
 				ret := RedirectLink.FindStringSubmatch(s)
 				return ret[1] + "://" + Decrypt(ret[2]) + ret[3]
 			})
-			resp.Header.Set("Location", location)
+			w.Header().Set("Location", location)
+			w.WriteHeader(resp.StatusCode)
 		}
+		return
 	}
 
 	for k, v := range resp.Header {
@@ -190,8 +184,14 @@ func (p *Proxy) HandleRequest(w http.ResponseWriter, r *http.Request) {
 
 	// Restore vpns toRequest to original
 	result = VPNsLinkMatch.ReplaceAllFunc(result, func(bytes []byte) []byte {
+		var postfix string
 		ret := VPNsLinkMatch.FindSubmatch(bytes)
-		return []byte(string(ret[1]) + "://" + Decrypt(string(ret[2])) + string(ret[3]))
+		if len(ret) == 4 && string(ret[3]) != "" {
+			postfix = "/" + string(ret[3])
+		}
+
+		link := string(ret[1]) + "://" + Decrypt(string(ret[2])) + postfix
+		return []byte(link)
 	})
 
 	// Fix URL Escape in links

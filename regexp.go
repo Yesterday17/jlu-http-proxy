@@ -6,7 +6,7 @@ var PathMatchRegex = regexp.MustCompile("/(https?)(?:-\\d*)?/([0-9a-f]{32,})(.+)
 
 var RedirectLink = regexp.MustCompile("https://vpns.jlu.edu.cn/(https?)(?:-[0-9]*)?/([0-9a-f]{32,})(.*)")
 
-var VPNsLinkMatch = regexp.MustCompile("(?:https:)?(?://)?(?:vpns.jlu.edu.cn)?/(https?)(?:-[0-9]*)?/([0-9a-f]{32,})([^\")]+)")
+var VPNsLinkMatch = regexp.MustCompile("(?:https:)?(?://)?(?:vpns.jlu.edu.cn)?/(https?)(?:-[0-9]*)?/([0-9a-f]{32,})(?:/([^\")]+))?")
 
 var LinkUnescape = regexp.MustCompile("(href|link|src)=\"([^\"]+)\"")
 
