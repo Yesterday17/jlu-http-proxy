@@ -29,9 +29,10 @@ func (p *Proxy) HandleRequest(w http.ResponseWriter, r *http.Request) {
 	} else if strings.HasPrefix(r.URL.Path, "/jlu-http-proxy") {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		path = r.URL.Path[15:]
+		var temppath = (r.URL.Path+"?"+r.URL.RawQuery)[15:]
 		switch path {
-		case "/redirect?url=":
-			link, err := base64.StdEncoding.DecodeString(path[14:])
+		case "/redirect":
+			link, err := base64.StdEncoding.DecodeString(temppath[14:])
 			if err != nil {
 				w.WriteHeader(403)
 				return
