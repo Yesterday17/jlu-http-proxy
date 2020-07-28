@@ -30,8 +30,8 @@ func (p *Proxy) HandleRequest(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		path = r.URL.Path[15:]
 		switch path {
-		case "/redirect?url=":
-			link, err := base64.StdEncoding.DecodeString(path[14:])
+		case "/redirect":
+			link, err := base64.StdEncoding.DecodeString(r.URL.RawQuery[4:])
 			if err != nil {
 				w.WriteHeader(403)
 				return
